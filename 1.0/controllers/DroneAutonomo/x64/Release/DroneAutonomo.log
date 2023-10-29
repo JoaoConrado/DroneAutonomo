@@ -1,3 +1,0 @@
-﻿C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Microsoft\VC\v170\Microsoft.CppBuild.targets(541,5): warning MSB8029: O diretório Intermediário ou o diretório de Saída não podem residir sob o diretório Temporário porque isso poderia levar a problemas com a compilação incremental.
-  DroneAutonomo.c
-LINK : fatal error LNK1104: não é possível abrir o arquivo 'C:\Users\HerikSarmento\Desktop\Faculdade\TCC\Webots\1.0\controllers\DroneAutonomo\DroneAutonomo.exe'
