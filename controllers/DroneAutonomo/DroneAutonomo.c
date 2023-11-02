@@ -21,6 +21,46 @@
 int errorCount = 0;
 int cemPontos = 0;
 
+typedef struct {
+	double Kp;    // Constante Proporcional
+	double Ki;    // Constante Integral
+	double Kd;    // Constante Derivativa
+	double prev_error;
+	double integral;
+} PIDController;
+
+void PID_Init(PIDController* pid, double Kp, double Ki, double Kd) {
+	pid->Kp = Kp;
+	pid->Ki = Ki;
+	pid->Kd = Kd;
+	pid->prev_error = 0.0;
+	pid->integral = 0.0;
+}
+
+double PID_Update(PIDController* pid, double setpoint, double process_variable) {
+	double error = setpoint - process_variable;
+	double output;
+
+	// Termo Proporcional
+	double P = pid->Kp * error;
+
+	// Termo Integral
+	pid->integral += error;
+	double I = pid->Ki * pid->integral;
+
+	// Termo Derivativo
+	double D = pid->Kd * (error - pid->prev_error);
+
+	output = P + I + D;
+
+	// Atualiza o erro anterior
+	pid->prev_error = error;
+
+	return output;
+}
+
+
+
 struct Coordenadas {
 	int x;
 	int y;
@@ -32,10 +72,6 @@ void calcularDiferenca(double x_atual, double y_atual, double angle, double x_de
 
 	double distance = sqrt(deltaX * deltaX + deltaY * deltaY);
 
-	/*if (angle < 0) {
-		angle += 2 * PI;
-	}*/
-
 	double destinationAngle = atan2(deltaY, deltaX);
 	double erroAngle = angle - destinationAngle;
 
@@ -44,11 +80,11 @@ void calcularDiferenca(double x_atual, double y_atual, double angle, double x_de
 		erroAngle = destinationAngle + angle;
 	}
 
-	double kpYaw = -1;
+	double kpYaw = -10;
 	double kiYaw = 0.5;
 	double kdYaw = 0.0;
 
-	*yaw = CLAMP(kpYaw * erroAngle + kiYaw * erroAngle + kdYaw * erroAngle, -1, 1);
+	*yaw = CLAMP(kpYaw * erroAngle + kiYaw * erroAngle + kdYaw * erroAngle, -3, 3);
 
 	double media = 0;
 
@@ -79,11 +115,7 @@ void calcularDiferenca(double x_atual, double y_atual, double angle, double x_de
 			media /= 1000;
 		}
 
-		if ((media < -0.0005 || media > 0.0005) && (*yawVelocity < -0.00005 || *yawVelocity > 0.00005))
-		{
-			//*yaw = CLAMP(kpYaw * erroAngle + kiYaw * erroAngle + kdYaw * erroAngle, -1, 1);
-		}
-		else
+		if (!((media < -0.0005 || media > 0.0005) && (*yawVelocity < -0.00005 || *yawVelocity > 0.00005)))
 		{
 			*rotating = 0;
 		}
@@ -95,7 +127,7 @@ void calcularDiferenca(double x_atual, double y_atual, double angle, double x_de
 		double kiPitch = -0.005;
 		double kdPitch = 0.0;
 
-		*pitch = -CLAMP(kpPitch * distance + kiPitch * distance + kdPitch * distance, -2, 2);
+		*pitch = -CLAMP(kpPitch * distance + kiPitch * distance + kdPitch * distance, -3, 3);
 
 
 		/*	double kpRoll = 8.0;
@@ -106,7 +138,7 @@ void calcularDiferenca(double x_atual, double y_atual, double angle, double x_de
 
 			//*roll = CLAMP(kpRoll * deltaY + kiRoll * deltaY + kdRoll * deltaY, -2, 2);
 	}
-	printf("angle: %f, destinationAngle: %f erroAngle: %f media: %f errorCount: %d\n", angle, destinationAngle, erroAngle, media, errorCount);
+	printf("yaw: %f angle: %f, destinationAngle: %f erroAngle: %f media: %f errorCount: %d\n", *yaw, angle, destinationAngle, erroAngle, media, errorCount);
 }
 
 
@@ -157,6 +189,7 @@ int main(int argc, char** argv) {
 	int pontoAtual = 0;
 	int rotating = 1;
 	double erros[1000];
+	int launching = 1;
 
 	for (int i = 0; i < 1000; i++) {
 		erros[i] = 0.0;
@@ -202,30 +235,45 @@ int main(int argc, char** argv) {
 		double pitch_disturbance = 0.0;
 		double yaw_disturbance = 0.0;
 
-		if (time > 5) {
+		if (launching == 1)
+		{
+			//calcularDiferenca(X, Y, yaw, X, Y, &pitch_disturbance, &roll_disturbance, &yaw_disturbance, &rotating, &yaw_velocity, &erros);
+			if (altitude >= target_altitude)
+			{
+				launching = 0;
+			}
+		}
+		else
+		{
 			calcularDiferenca(X, Y, yaw, arrayDeCoordenadas[pontoAtual].x, arrayDeCoordenadas[pontoAtual].y, &pitch_disturbance, &roll_disturbance, &yaw_disturbance, &rotating, &yaw_velocity, &erros);
-			//printf("x: %f y: %f yaw: %f z: %f pitchDisturbance: %f rollDisturbance: %f yawDisturbance: %f ponto: %d\n", X, Y, yaw, altitude, pitch_disturbance, roll_disturbance, yaw_disturbance, pontoAtual);
 			//printf("erroAngle: %f ponto: %d\n", lastError, pontoAtual);
-
 			if ((pitch_disturbance > -0.15 && pitch_disturbance < 0.15) &&
 				(roll_disturbance > -0.15 && roll_disturbance < 0.15) &&
 				rotating == 0)
 			{
-				//printf("stop");
 				double timeAtual = time;
+				errorCount = 0;
+				cemPontos = 0;
+				rotating = 1;
 				if (pontoAtual < 4)
 				{
-					errorCount = 0;
-					cemPontos = 0;
-					rotating = 1;
 					pontoAtual += 1;
 					while (wb_robot_step(timestep) != -1) {
-						if (wb_robot_get_time() - timeAtual > 3.0)
+						if (wb_robot_get_time() - timeAtual > 5.0)
 							break;
 					}
 				}
+				else {
+					while (wb_robot_step(timestep) != -1) {
+						if (wb_robot_get_time() - timeAtual > 10.0)
+							break;
+					}
+					pontoAtual = 0;
+				}
+
 			}
 		}
+		printf("x: %f y: %f yaw: %f z: %f pitchDisturbance: %f rollDisturbance: %f yawDisturbance: %f ponto: %d\n", X, Y, yaw, altitude, pitch_disturbance, roll_disturbance, yaw_disturbance, pontoAtual);
 		// Compute the roll, pitch, yaw and vertical inputs.
 		const double roll_input = k_roll_p * CLAMP(roll, -1.0, 1.0) + roll_velocity + roll_disturbance;
 		const double pitch_input = k_pitch_p * CLAMP(pitch, -1.0, 1.0) + pitch_velocity + pitch_disturbance;

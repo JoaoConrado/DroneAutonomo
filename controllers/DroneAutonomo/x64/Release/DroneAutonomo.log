@@ -1,9 +1,9 @@
 ﻿  DroneAutonomo.c
-C:\Users\HerikSarmento\Desktop\Faculdade\web\Tcc\controllers\DroneAutonomo\DroneAutonomo.c(206,182): warning C4090: 'função': qualificadores 'const' diferentes
-C:\Users\HerikSarmento\Desktop\Faculdade\web\Tcc\controllers\DroneAutonomo\DroneAutonomo.c(206,184): warning C4047: 'função': 'double *' difere em níveis de indireção de 'double (*)[1000]'
-C:\Users\HerikSarmento\Desktop\Faculdade\web\Tcc\controllers\DroneAutonomo\DroneAutonomo.c(206,184): warning C4024: 'calcularDiferenca': tipos diferentes para parâmetro formal e real 11
+C:\Users\HerikSarmento\Desktop\Faculdade\web\Tcc\controllers\DroneAutonomo\DroneAutonomo.c(248,182): warning C4090: 'função': qualificadores 'const' diferentes
+C:\Users\HerikSarmento\Desktop\Faculdade\web\Tcc\controllers\DroneAutonomo\DroneAutonomo.c(248,184): warning C4047: 'função': 'double *' difere em níveis de indireção de 'double (*)[1000]'
+C:\Users\HerikSarmento\Desktop\Faculdade\web\Tcc\controllers\DroneAutonomo\DroneAutonomo.c(248,184): warning C4024: 'calcularDiferenca': tipos diferentes para parâmetro formal e real 11
   Gerando código
-  5 of 5 functions (100.0%) were compiled.
+  1 of 5 functions (20.0%) were compiled, the rest were copied from previous compilation.
     0 functions were new in current compilation
     0 functions had inline decision re-evaluated but remain unchanged
   Finalizada a geração de código
