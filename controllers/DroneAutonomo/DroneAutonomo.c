@@ -17,43 +17,40 @@
 #define SIGN(x) ((x) > 0) - ((x) < 0)
 #define CLAMP(value, low, high) ((value) < (low) ? (low) : ((value) > (high) ? (high) : (value)))
 #define PI 3.14159265358979323846
+#define TIMESTAMP 8
 
 int errorCount = 0;
 int cemPontos = 0;
 
 typedef struct {
-	double Kp;    // Constante Proporcional
-	double Ki;    // Constante Integral
-	double Kd;    // Constante Derivativa
+	double Kp;
+	double Ki;
+	double Kd;
 	double prev_error;
 	double integral;
+	double setpoint;
 } PIDController;
 
-void PID_Init(PIDController* pid, double Kp, double Ki, double Kd) {
+void PID_Init(PIDController* pid, double Kp, double Ki, double Kd, double setpoint) {
 	pid->Kp = Kp;
 	pid->Ki = Ki;
 	pid->Kd = Kd;
 	pid->prev_error = 0.0;
 	pid->integral = 0.0;
+	pid->setpoint = setpoint;
 }
 
-double PID_Update(PIDController* pid, double setpoint, double process_variable) {
-	double error = setpoint - process_variable;
+double PID_Update(PIDController* pid, double process_variable) {
+	double error = pid->setpoint - process_variable;
 	double output;
 
-	// Termo Proporcional
+	double time = 0.008;
 	double P = pid->Kp * error;
-
-	// Termo Integral
 	pid->integral += error;
 	double I = pid->Ki * pid->integral;
-
-	// Termo Derivativo
 	double D = pid->Kd * (error - pid->prev_error);
-
 	output = P + I + D;
 
-	// Atualiza o erro anterior
 	pid->prev_error = error;
 
 	return output;
@@ -176,33 +173,6 @@ int main(int argc, char** argv) {
 		wb_motor_set_velocity(motors[m], 1.0);
 	}
 
-	struct Coordenadas arrayDeCoordenadas[5] = {
-		{5, 5},
-		{5, -5},
-		{-5, -5},
-		{-5, 5},
-		{0, 0}
-	};
-
-	size_t tamanhoPontos = sizeof(arrayDeCoordenadas) / sizeof(arrayDeCoordenadas[0]);
-
-	int pontoAtual = 0;
-	int rotating = 1;
-	double erros[1000];
-	int launching = 1;
-
-	for (int i = 0; i < 1000; i++) {
-		erros[i] = 0.0;
-	}
-
-	// Display the welcome message.
-	/*printf("Start the drone...\n");*/
-
-	// Wait one second.
-	while (wb_robot_step(timestep) != -1) {
-		if (wb_robot_get_time() > 1.0)
-			break;
-	}
 
 	// Constants, empirically found.
 	const double k_vertical_thrust = 68.5;  // with this thrust, the drone lifts.
@@ -213,6 +183,34 @@ int main(int argc, char** argv) {
 
 	// Variables.
 	double target_altitude = 1.0;  // The target altitude. Can be changed by the user.
+
+
+	// Variaveis Customizadas
+	struct Coordenadas arrayDeCoordenadas[5] = {
+	{5, 5},
+	{5, -5},
+	{-5, -5},
+	{-5, 5},
+	{0, 0}
+	};
+
+	size_t tamanhoPontos = sizeof(arrayDeCoordenadas) / sizeof(arrayDeCoordenadas[0]);
+
+	int pontoAtual = 0;
+	int rotating = 1;
+	double erros[1000];
+	bool launching = true;
+
+	for (int i = 0; i < 1000; i++) {
+		erros[i] = 0.0;
+	}
+
+	PIDController pitchPID, rollPID, yawPID;
+
+	PID_Init(&pitchPID, 5, 0.005, 2, 0);
+	PID_Init(&rollPID, 5, 0.005, 5, 0);
+	PID_Init(&yawPID, 20, 0.005, 15, 0);
+
 
 	// Main loop
 	while (wb_robot_step(timestep) != -1) {
@@ -225,7 +223,7 @@ int main(int argc, char** argv) {
 		const double yaw = wb_inertial_unit_get_roll_pitch_yaw(imu)[2];
 		const double X = wb_gps_get_values(gps)[0];
 		const double Y = wb_gps_get_values(gps)[1];
-		const double altitude = wb_gps_get_values(gps)[2];
+		const double Z = wb_gps_get_values(gps)[2];
 		const double roll_velocity = wb_gyro_get_values(gyro)[0];
 		const double pitch_velocity = wb_gyro_get_values(gyro)[1];
 		const double yaw_velocity = wb_gyro_get_values(gyro)[2];
@@ -235,50 +233,35 @@ int main(int argc, char** argv) {
 		double pitch_disturbance = 0.0;
 		double yaw_disturbance = 0.0;
 
-		if (launching == 1)
+		double deltaX = arrayDeCoordenadas[pontoAtual].x - X;
+		double deltaY = arrayDeCoordenadas[pontoAtual].y - Y;
+
+		double destinationAngle = atan2(deltaY, deltaX);
+		yawPID.setpoint = 3.14;
+
+		double normalizedYaw = 0;
+		if (yaw < 0)
 		{
-			//calcularDiferenca(X, Y, yaw, X, Y, &pitch_disturbance, &roll_disturbance, &yaw_disturbance, &rotating, &yaw_velocity, &erros);
-			if (altitude >= target_altitude)
-			{
-				launching = 0;
-			}
+			normalizedYaw = yaw + 2 * PI;
 		}
 		else
 		{
-			calcularDiferenca(X, Y, yaw, arrayDeCoordenadas[pontoAtual].x, arrayDeCoordenadas[pontoAtual].y, &pitch_disturbance, &roll_disturbance, &yaw_disturbance, &rotating, &yaw_velocity, &erros);
-			//printf("erroAngle: %f ponto: %d\n", lastError, pontoAtual);
-			if ((pitch_disturbance > -0.15 && pitch_disturbance < 0.15) &&
-				(roll_disturbance > -0.15 && roll_disturbance < 0.15) &&
-				rotating == 0)
-			{
-				double timeAtual = time;
-				errorCount = 0;
-				cemPontos = 0;
-				rotating = 1;
-				if (pontoAtual < 4)
-				{
-					pontoAtual += 1;
-					while (wb_robot_step(timestep) != -1) {
-						if (wb_robot_get_time() - timeAtual > 5.0)
-							break;
-					}
-				}
-				else {
-					while (wb_robot_step(timestep) != -1) {
-						if (wb_robot_get_time() - timeAtual > 10.0)
-							break;
-					}
-					pontoAtual = 0;
-				}
-
-			}
+			normalizedYaw = yaw;
 		}
-		printf("x: %f y: %f yaw: %f z: %f pitchDisturbance: %f rollDisturbance: %f yawDisturbance: %f ponto: %d\n", X, Y, yaw, altitude, pitch_disturbance, roll_disturbance, yaw_disturbance, pontoAtual);
+
+		pitch_disturbance = CLAMP(PID_Update(&pitchPID, X), -10, 10);
+		roll_disturbance = -CLAMP(PID_Update(&rollPID, Y), -10, 10);
+		yaw_disturbance = CLAMP(PID_Update(&yawPID, normalizedYaw), -10, 10);
+		//printf("%f\n", yawPID.prev_error);
+
+		printf("x: %f y: %f z: %f yaw: %f pitchDisturbance: %f rollDisturbance: %f yawDisturbance: %f ponto: %d\n", X, Y, Z, yaw, pitch_disturbance, roll_disturbance, yaw_disturbance, pontoAtual);
+
+		//printf("pitch %f roll %f yawpid %f\n", pitchPID.integral, rollPID.integral, yawPID.integral);
 		// Compute the roll, pitch, yaw and vertical inputs.
-		const double roll_input = k_roll_p * CLAMP(roll, -1.0, 1.0) + roll_velocity + roll_disturbance;
-		const double pitch_input = k_pitch_p * CLAMP(pitch, -1.0, 1.0) + pitch_velocity + pitch_disturbance;
+		const double roll_input = k_roll_p * roll + roll_velocity + roll_disturbance;
+		const double pitch_input = k_pitch_p * pitch + pitch_velocity + pitch_disturbance;
 		const double yaw_input = yaw_disturbance;
-		const double clamped_difference_altitude = CLAMP(target_altitude - altitude + k_vertical_offset, -1.0, 1.0);
+		const double clamped_difference_altitude = CLAMP(target_altitude - Z + k_vertical_offset, -1.0, 1.0);
 		const double vertical_input = k_vertical_p * pow(clamped_difference_altitude, 3.0);
 
 		// Actuate the motors taking into consideration all the computed inputs.

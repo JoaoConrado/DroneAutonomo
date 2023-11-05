@@ -1065,7 +1065,7 @@ DEF DRONE Robot {
   immersionProperties [
     ImmersionProperties {
       fluidName "wind"
-      dragForceCoefficients 21 21 0
+      dragForceCoefficients 10 0 0
     }
   ]
   boundingObject Group {
@@ -1182,8 +1182,11 @@ Fluid {
     }
   ]
   name "wind"
-  density 1.2923
-  streamVelocity -1 -1 0
+  density 1.26
+  viscosity 0
+  streamVelocity -1 0 0
   boundingObject USE box
+  translationStep 0
+  rotationStep 0
   locked TRUE
 }
