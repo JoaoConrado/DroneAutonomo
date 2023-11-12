@@ -1,0 +1,236 @@
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+#include <webots/robot.h>
+
+#include <webots/camera.h>
+#include <webots/compass.h>
+#include <webots/supervisor.h>
+#include <webots/gps.h>
+#include <webots/gyro.h>
+#include <webots/inertial_unit.h>
+#include <webots/keyboard.h>
+#include <webots/led.h>
+#include <webots/motor.h>
+#include <webots/accelerometer.h>
+
+#define SIGN(x) ((x) > 0) - ((x) < 0)
+#define CLAMP(value, low, high) ((value) < (low) ? (low) : ((value) > (high) ? (high) : (value)))
+#define PI 3.14159265358979323846
+int point = 0;
+
+
+
+struct Coordenadas {
+	double x;
+	double y;
+};
+
+struct PIDController {
+	double Kp;
+	double Ki;
+	double Kd;
+	double prev_error;
+	double integral;
+	double setpoint;
+};
+
+struct PIDController createPIDController(double Kp, double Ki, double Kd) {
+	struct PIDController controller;
+	controller.Kp = Kp;
+	controller.Ki = Ki;
+	controller.Kd = Kd;
+	controller.prev_error = 0.0;
+	controller.integral = 0.0;
+	controller.setpoint = 0.0;
+	return controller;
+}
+
+double PID_Update(struct PIDController* pid, double process_variable) {
+	double error = pid->setpoint - process_variable;
+	double output;
+
+	//printf("%f\n", error);
+	double time = 0.008;
+	double P = pid->Kp * error;
+	pid->integral += error;
+	double I = pid->Ki * pid->integral;
+	double D = pid->Kd * (error - pid->prev_error);
+	output = P + I + D;
+
+	printf("P: %f, I: %f, D: %f, output: %f, setpoint: %f, error: %f\n", P, I, D, output, pid->setpoint, error);
+	pid->prev_error = error;
+
+	return output;
+}
+
+
+int main(int argc, char** argv) {
+	wb_robot_init();
+	int timestep = (int)wb_robot_get_basic_time_step();
+	WbNodeRef drone = wb_supervisor_node_get_from_def("DRONE");
+	WbDeviceTag camera = wb_robot_get_device("camera");
+	wb_camera_enable(camera, timestep);
+	WbDeviceTag front_left_led = wb_robot_get_device("front left led");
+	WbDeviceTag front_right_led = wb_robot_get_device("front right led");
+	WbDeviceTag imu = wb_robot_get_device("inertial unit");
+	wb_inertial_unit_enable(imu, timestep);
+	WbDeviceTag gps = wb_robot_get_device("gps");
+	wb_gps_enable(gps, timestep);
+	WbDeviceTag compass = wb_robot_get_device("compass");
+	wb_compass_enable(compass, timestep);
+	WbDeviceTag gyro = wb_robot_get_device("gyro");
+	wb_gyro_enable(gyro, timestep);
+	wb_keyboard_enable(timestep);
+	WbDeviceTag xrl8 = wb_robot_get_device("gyro");
+	wb_gyro_enable(gyro, timestep);
+	wb_keyboard_enable(timestep);
+
+
+	WbDeviceTag camera_roll_motor = wb_robot_get_device("camera roll");
+	WbDeviceTag camera_pitch_motor = wb_robot_get_device("camera pitch");
+	WbDeviceTag camera_yaw_motor = wb_robot_get_device("camera yaw");
+
+	WbDeviceTag front_left_motor = wb_robot_get_device("front left propeller");
+	WbDeviceTag front_right_motor = wb_robot_get_device("front right propeller");
+	WbDeviceTag rear_left_motor = wb_robot_get_device("rear left propeller");
+	WbDeviceTag rear_right_motor = wb_robot_get_device("rear right propeller");
+	WbDeviceTag motors[4] = { front_left_motor, front_right_motor, rear_left_motor, rear_right_motor };
+	int m;
+	for (m = 0; m < 4; ++m) {
+		wb_motor_set_position(motors[m], INFINITY);
+		wb_motor_set_velocity(motors[m], 1.0);
+	}
+
+	while (wb_robot_step(timestep) != -1) {
+		if (wb_robot_get_time() > 1.0)
+			break;
+	}
+
+	// Constants, empirically found.
+	const double k_vertical_thrust = 68.5;  // with this thrust, the drone lifts.
+	const double k_vertical_offset = 0.6;   // Vertical offset where the robot actually targets to stabilize itself.
+	const double k_vertical_p = 3.0;        // P constant of the vertical PID.
+	const double k_roll_p = 50.0;           // P constant of the roll PID.
+	const double k_pitch_p = 30.0;          // P constant of the pitch PID.
+
+	// Variables.
+	double target_altitude = 1.0;
+	double startAltitude = 0;
+
+	struct PIDController pitchPID = createPIDController(5, 0.05, 5);
+	struct PIDController rollPID = createPIDController(20, 0.1, 5);
+	struct PIDController yawPID = createPIDController(0.5, 0.0005, 1);
+	struct PIDController goPID = createPIDController(0.5, 0, 1); 
+
+	struct Coordenadas locationPoints[5] = {
+	{5, 5},
+	{5, -5},
+	{-5, -5},
+	{-5, 5},
+	{0, 0}
+	};
+
+
+	bool firstRun = true;
+	bool stable = false;
+	bool yawStable = false;
+	int stablee = 0;
+
+	// Main loop
+	while (wb_robot_step(timestep) != -1) {
+
+		const double time = wb_robot_get_time();  // in seconds.
+		//printf("time: %f\n", time);
+
+		const double roll = wb_inertial_unit_get_roll_pitch_yaw(imu)[0];
+		const double pitch = wb_inertial_unit_get_roll_pitch_yaw(imu)[1];
+		const double yaw = wb_inertial_unit_get_roll_pitch_yaw(imu)[2];
+		const double X = wb_gps_get_values(gps)[0];
+		const double Y = wb_gps_get_values(gps)[1];
+		const double Z = wb_gps_get_values(gps)[2];
+		const double roll_velocity = wb_gyro_get_values(gyro)[0];
+		const double pitch_velocity = wb_gyro_get_values(gyro)[1];
+		const double yaw_velocity = wb_gyro_get_values(gyro)[2];
+
+		const double speedX = wb_supervisor_node_get_velocity(drone)[0];
+		const double speedY = wb_supervisor_node_get_velocity(drone)[1];
+		// Transform the keyboard input to disturbances on the stabilization algorithm.
+		double roll_disturbance = 0.0;
+		double pitch_disturbance = 0.0;
+		double yaw_disturbance = 0.0;
+
+		// INICIO
+		double deltaX = locationPoints[point].x - X;
+		double deltaY = locationPoints[point].y - Y;
+		double distance = sqrt(deltaX * deltaX + deltaY * deltaY); 
+		double destinationAngle = atan2(deltaY, deltaX);
+
+		/*yawPID.setpoint = destinationAngle;*/
+		double erroAngle = destinationAngle - yaw;
+
+		if (firstRun == true)
+		{
+			startAltitude = Z;
+			firstRun = false;
+			yawPID.setpoint = yaw;
+		}
+		/*
+		if (Z > startAltitude + 0.5)
+		{
+			if ((pitch_velocity < 0.0009 && pitch_velocity > -0.0009) &&
+				(roll_velocity < 0.0009 && roll_velocity > -0.0009) &&
+				(yaw_velocity < 0.0009 && yaw_velocity > -0.0009) &&
+				(erroAngle < 0.09 && erroAngle > -0.09))
+			{
+				yawStable = true;
+			}
+			roll_disturbance = -PID_Update(&rollPID, roll);
+			yaw_disturbance = PID_Update(&yawPID, yaw);
+
+			if (yawStable == true) {
+				pitch_disturbance = CLAMP(PID_Update(&goPID, distance), -10, 10); 
+			}
+			else
+			{
+				pitch_disturbance = -PID_Update(&pitchPID, pitch); 
+			}	
+		}*/
+
+
+		//ESTABILIZAÇÃO
+		/*roll_disturbance = -PID_Update(&rollPID, roll);
+		yaw_disturbance = PID_Update(&yawPID, yaw);*/
+
+		if (Z > startAltitude + 0.15)
+		{
+			//pitch_disturbance = -PID_Update(&pitchPID, speedX); 
+		}
+	
+
+		//printf("pitch %f, roll %f, yaw %f, pitchDisturbance: %f, rollDisturbance: %f, yawDisturbance: %f, stablee %d\n", pitch, roll, yaw, pitch_disturbance, roll_disturbance, yaw_disturbance,stablee);
+		//printf("pitch_velocity %f, roll_velocity %f, yaw_velocity %f, erroAngle %f, yawStable: %d\n", pitch_velocity, roll_velocity, yaw_velocity, erroAngle, yawStable);
+		printf("speedX: %f, speedY:%f\n", speedX,speedY);
+
+		const double roll_input = k_roll_p * CLAMP(roll, -1.0, 1.0) + roll_velocity + roll_disturbance;
+		const double pitch_input = k_pitch_p * CLAMP(pitch, -1.0, 1.0) + pitch_velocity + pitch_disturbance;
+		const double yaw_input = yaw_disturbance;
+		const double clamped_difference_altitude = CLAMP(target_altitude - Z + k_vertical_offset, -1.0, 1.0);
+		const double vertical_input = k_vertical_p * pow(clamped_difference_altitude, 3.0);
+
+		// Actuate the motors taking into consideration all the computed inputs.
+		const double front_left_motor_input = k_vertical_thrust + vertical_input - roll_input + pitch_input - yaw_input;
+		const double front_right_motor_input = k_vertical_thrust + vertical_input + roll_input + pitch_input + yaw_input;
+		const double rear_left_motor_input = k_vertical_thrust + vertical_input - roll_input - pitch_input + yaw_input;
+		const double rear_right_motor_input = k_vertical_thrust + vertical_input + roll_input - pitch_input - yaw_input;
+		wb_motor_set_velocity(front_left_motor, front_left_motor_input);
+		wb_motor_set_velocity(front_right_motor, -front_right_motor_input);
+		wb_motor_set_velocity(rear_left_motor, -rear_left_motor_input);
+		wb_motor_set_velocity(rear_right_motor, rear_right_motor_input);
+	};
+
+	wb_robot_cleanup();
+
+	return EXIT_SUCCESS;
+}

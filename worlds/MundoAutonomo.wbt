@@ -16,8 +16,9 @@ WorldInfo {
 }
 Viewpoint {
   orientation -0.5773502691896258 0.5773502691896258 0.5773502691896258 2.0944
-  position -2.3493540923120234e-05 -2.3493607356614546e-05 3.4556545162623116
+  position 6.691785838691156e-05 6.072635785967083e-05 24.86100987853983
   follow "Mavic 2 PRO"
+  followType "None"
 }
 TexturedBackground {
 }
@@ -35,7 +36,6 @@ SquareManhole {
 }
 DEF DRONE Robot {
   translation 0 0 0.1
-  rotation 0 0 1 3.14158
   children [
     DEF BODY_SLOT Group {
     }
@@ -1065,7 +1065,7 @@ DEF DRONE Robot {
   immersionProperties [
     ImmersionProperties {
       fluidName "wind"
-      dragForceCoefficients 10 0 0
+      dragForceCoefficients 10 10 0
     }
   ]
   boundingObject Group {
@@ -1153,6 +1153,7 @@ DEF DRONE Robot {
   controllerArgs [
     ""
   ]
+  supervisor TRUE
 }
 TrafficCone {
   translation 5 5 0
@@ -1177,14 +1178,14 @@ Fluid {
         transparency 1
       }
       geometry DEF box Box {
-        size 20 20 20
+        size 1000 1000 100
       }
     }
   ]
   name "wind"
   density 1.26
   viscosity 0
-  streamVelocity -1 0 0
+  streamVelocity 0 1 0
   boundingObject USE box
   translationStep 0
   rotationStep 0
