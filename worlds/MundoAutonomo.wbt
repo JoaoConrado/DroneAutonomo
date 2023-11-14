@@ -16,7 +16,7 @@ WorldInfo {
 }
 Viewpoint {
   orientation -0.5773502691896258 0.5773502691896258 0.5773502691896258 2.0944
-  position 6.691785838691156e-05 6.072635785967083e-05 24.86100987853983
+  position 1.0999208461872463e-05 4.807549809694883e-06 5.085212520513706
   follow "Mavic 2 PRO"
   followType "None"
 }
@@ -1185,7 +1185,7 @@ Fluid {
   name "wind"
   density 1.26
   viscosity 0
-  streamVelocity 0 1 0
+  streamVelocity 1 0 0
   boundingObject USE box
   translationStep 0
   rotationStep 0
