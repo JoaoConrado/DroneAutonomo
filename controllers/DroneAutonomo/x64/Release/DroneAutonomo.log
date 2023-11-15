@@ -1,5 +1,7 @@
-﻿  Gerando código
-  1 of 8 functions (12.5%) were compiled, the rest were copied from previous compilation.
+﻿  DroneAutonomo.c
+C:\Users\HerikSarmento\Desktop\Faculdade\web\Tcc\controllers\DroneAutonomo\DroneAutonomo.c(160,23): warning C4101: 'goPID': variável local não referenciada
+  Gerando código
+  1 of 7 functions (14.3%) were compiled, the rest were copied from previous compilation.
     0 functions were new in current compilation
     0 functions had inline decision re-evaluated but remain unchanged
   Finalizada a geração de código
