@@ -1140,7 +1140,7 @@ DEF DRONE Robot {
       -0.088 0 -0.04
     ]
   }
-  controller "<extern>"
+  controller "DroneAutonomo"
   controllerArgs [
     ""
   ]

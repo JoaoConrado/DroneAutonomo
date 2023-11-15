@@ -105,6 +105,7 @@ double degreeToRadian(double degree) {
 	return degree * PI / 180.0;
 }
 
+
 int main(int argc, char** argv) {
 	wb_robot_init();
 	int timestep = (int)wb_robot_get_basic_time_step();
@@ -159,7 +160,8 @@ int main(int argc, char** argv) {
 	struct PIDController yawPID = createPIDController(2, 0.009, 1, 3);
 	struct PIDController goPID = createPIDController(1, 0, 1, 4);
 
-	struct Coordenadas locationPoints[5] = {
+	struct Coordenadas locationPoints[6] = {
+	{0,0},
 	{5, 5},
 	{5, -5},
 	{-5, -5},
@@ -171,14 +173,15 @@ int main(int argc, char** argv) {
 	bool firstRun = true;
 	bool stable = false;
 	bool yawStable = false;
-	int stablee = 0;
 	double anteriorX = 0;
 	double velocidadeX = 0;
 	double anteriorY = 0;
 	double velocidadeY = 0;
 	double initialX = 0;
 	double initialY = 0;
-
+	double distanceTotal = 0.0;
+	double lastTime = 1;
+	int pointAux = 0.0;
 	struct FiltroPassaBaixa filtroX = { 0.001, 0.0 };
 	struct FiltroPassaBaixa filtroY = { 0.001, 0.0 };
 	struct FiltroPassaBaixa filtroYaw = { 0.0001, 0.0 };
@@ -215,12 +218,9 @@ int main(int argc, char** argv) {
 
 		if (firstRun == true)
 		{
-			double deltaX = locationPoints[point].x - X;
-			double deltaY = locationPoints[point].y - Y;
-			double destinationAngle = atan2(deltaY, deltaX);
 			startAltitude = Z;
 			firstRun = false;
-			yawPID.setpoint = destinationAngle;
+			yawPID.setpoint = yaw;
 			initialX = X;
 			initialY = Y;
 		}
@@ -228,18 +228,11 @@ int main(int argc, char** argv) {
 		double nextX = 0.0;
 		double nextY = 0.0;
 
-		/*if (time < 50)
-		{
-			nextX = initialX;
-			nextY = initialY;
-		}
-		else
+		if (stable == true)
 		{
 			nextX = filtroPassaBaixa(&filtroX, locationPoints[point].x);
 			nextY = filtroPassaBaixa(&filtroY, locationPoints[point].y);
-
-			printf("nextX %f, nextY %f, X: %f,Y: %f\n", nextX, nextY, X, Y);
-		}*/
+		}
 
 		double deltaX = nextX - X;
 		double deltaY = nextY - Y;
@@ -269,60 +262,40 @@ int main(int argc, char** argv) {
 		double roll_disturbance = 0.0;
 		double pitch_disturbance = 0.0;
 		double yaw_disturbance = 0.0;
-		double erroAngle = destinationAngle - yaw;
+
 		double deltaXT = locationPoints[point].x - X;
 		double deltaYT = locationPoints[point].y - Y;
-		double distanceTotal = sqrt(deltaXT * deltaXT + deltaYT * deltaYT);
+		distanceTotal = sqrt(deltaXT * deltaXT + deltaYT * deltaYT);
 
 		if (Z > startAltitude + 0.15)
 		{
-			/*if ((velocidadeX < 0.09 && velocidadeX> -0.09) &&
-				(velocidadeY < 0.09 && velocidadeY > -0.09) &&
-				(yaw_velocity < 0.009 && yaw_velocity > -0.009) &&
-				(distanceTotal < 0.09 && distanceTotal > -0.09))
-			{
-				stable = true;
-				filtroYaw.prev_saida = yaw;
-			}
-			if (stable == true)
-			{
-				deltaXT = locationPoints[point + 1].x - X;
-				deltaYT = locationPoints[point + 1].y - Y;
-				double destinationAngleT = atan2(deltaYT, deltaXT);
-				double filter = filtroPassaBaixa(&filtroYaw, destinationAngleT);
-				yawPID.setpoint = filter;
-			}*/
-			roll_disturbance = CLAMP(PID_Update(&rollPID, rollAux), -10, 10);
-			pitch_disturbance = CLAMP(PID_Update(&pitchPID, pitchAux), -10, 10);
-
 			if ((velocidadeX < 0.009 && velocidadeX> -0.009) &&
 				(velocidadeY < 0.009 && velocidadeY > -0.009) &&
 				(yaw_velocity < 0.009 && yaw_velocity > -0.009) &&
-				(rollAux < 0.009 && rollAux > -0.009) &&
-				(pitchAux < 0.09 && pitchAux > -0.09))
+				(distanceTotal < 0.09 && distanceTotal > -0.09) &&
+				(time-lastTime>0.5))
 			{
-				yawStable = true;
-				filtroYaw.prev_saida = yaw;
+				if (yawStable == false)
+				{
+					double deltaX = locationPoints[point + 1].x - X;
+					double deltaY = locationPoints[point + 1].y - Y;
+					double destinationAngle = atan2(deltaY, deltaX);
+					yawPID.setpoint = destinationAngle;
+				}
+				else
+				{
+					point += 1;
+					stable = true; 
+				}
+				lastTime = time;
+				yawStable = !yawStable;
 			}
-			if (yawStable == true)
-			{
-				double deltaX = locationPoints[point].x - X;
-				double deltaY = locationPoints[point].y - Y;
-				double destinationAngle = atan2(deltaY, deltaX);
-				yawPID.setpoint = destinationAngle;
-
-				yaw_disturbance = PID_Update(&yawPID, yaw);
-
-				//printf("%f\n", angleF);
-
-				printf("yaw: %f,yawSetpoint: %f,yaw_disturbance: %f\n", yaw, yawPID.setpoint,yaw_disturbance);
-
-			}
-			//yaw_disturbance = PID_Update(&yawPID, yaw);
+			roll_disturbance = CLAMP(PID_Update(&rollPID, rollAux), -10, 10);
+			pitch_disturbance = CLAMP(PID_Update(&pitchPID, pitchAux), -10, 10);
+			yaw_disturbance = PID_Update(&yawPID, yaw);
 		}
 
-		
-
+		printf("velocidadeX %f, velocidadeY %f, yaw_velocity: %f,point: %d,distanceT: %f\n", velocidadeX, velocidadeY, yaw_velocity, point, distanceTotal);
 
 		const double roll_input = k_roll_p * CLAMP(roll, -1.0, 1.0) + roll_velocity + roll_disturbance;
 		const double pitch_input = k_pitch_p * CLAMP(pitch, -1.0, 1.0) + pitch_velocity + pitch_disturbance;
